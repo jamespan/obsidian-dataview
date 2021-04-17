@@ -332,6 +332,10 @@ export const BINARY_OPS = BinaryOpHandler.create()
     .add('-', 'date', 'duration', (a, b) => Fields.literal('date', a.value.minus(b.value)))
     // Array operations.
     .add('+', 'array', 'array', (a, b) => Fields.array(([] as LiteralField[]).concat(a.value).concat(b.value)))
+    .add('*', 'array', 'array', (a, b) => {
+        const zip = (a: any[], b: any[]) => a.map((k, i) => [k, b[i]]);
+        return Fields.array(zip(a.value, b.value).map(x => Object.assign({}, x[0], {"value": x[0].value * x[1].value})))
+    })
     // Object operations.
     .add('+', 'object', 'object', (a, b) => {
         let result = new Map<string, LiteralField>();
@@ -484,6 +488,9 @@ export class FunctionHandler {
 export type LFR<T extends LiteralTypeOrAll> = LiteralFieldReprAll<T>;
 
 export const FUNCTIONS = new FunctionHandler()
+    .add1("str", "*", (field: LFR<'*'>, context) => field.value == null ? Fields.NULL : Fields.string(field.value.toString()))
+    .add1("eval", "*", (field: LFR<'*'>, context) => field.value == null ? Fields.NULL : Fields.number(eval(field.value.toString())))
+    .add1("financial", "number", (field: LFR<'number'>, context) => field.value == null ? Fields.NULL : Fields.number(parseFloat(field.value.toFixed(2))))
     .add1("length", "array", (field: LFR<'array'>, context) => Fields.number(field.value.length))
     .add1("length", "object", (field: LFR<'object'>, context) => Fields.number(field.value.size))
     .add1("length", "string", (field: LFR<'string'>, context) => Fields.number(field.value.length))

@@ -315,7 +315,11 @@ export function execute(query: Query, index: FullIndex, origin: string): QueryRe
     switch (query.header.type) {
         case "table":
             let tableFields = query.header.fields;
-            if (hasFileLinks) tableFields.unshift(Fields.named("File", Fields.indexVariable("file.link")));
+            let hasLink = tableFields.some(f => {
+                // @ts-ignore
+                return f.field.type == "index" && f.field?.object?.name == "file" && f.field.index.value == "link"
+            })
+            if (hasFileLinks && !hasLink) tableFields.unshift(Fields.named("File", Fields.indexVariable("file.link")));
 
             return {
                 names: tableFields.map(v => v.name),
