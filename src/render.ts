@@ -41,13 +41,17 @@ export function renderTable(container: HTMLElement, headers: string[], values: (
 	let tbodyEl = tableEl.createEl('tbody');
 	for (let row of values) {
 		let rowEl = tbodyEl.createEl('tr');
+		let i = 0;
 		for (let value of row) {
+			let attr = {"data-content": "", "data-header": headers[i] as string};
 			if (typeof value == "string") {
-				rowEl.createEl('td', { text: value });
+				attr["data-content"] = value as string
+				rowEl.createEl('td', { text: value, attr: attr });
 			} else {
-				let wrapper = rowEl.createEl('td');
+				let wrapper = rowEl.createEl('td', {attr: attr});
 				wrapper.appendChild(value);
 			}
+			i++;
 		}
 	}
 }
