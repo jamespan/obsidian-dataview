@@ -1,6 +1,7 @@
 /** Evaluates fields in the expression language. */
 import { BinaryOp, LiteralType, LiteralField, LiteralFieldRepr, Field, Fields } from 'src/query';
 import { normalizeDuration } from "src/util/normalize";
+import {evaluate} from "mathjs"
 
 /////////////////////////////////
 // Core Context Implementation //
@@ -489,8 +490,9 @@ export type LFR<T extends LiteralTypeOrAll> = LiteralFieldReprAll<T>;
 
 export const FUNCTIONS = new FunctionHandler()
     .add1("str", "*", (field: LFR<'*'>, context) => field.value == null ? Fields.NULL : Fields.string(field.value.toString()))
-    .add1("eval", "*", (field: LFR<'*'>, context) => field.value == null ? Fields.NULL : Fields.number(eval(field.value.toString())))
-    .add1("financial", "number", (field: LFR<'number'>, context) => field.value == null ? Fields.NULL : Fields.number(parseFloat(field.value.toFixed(2))))
+    .add1("eval", "*", (field: LFR<'*'>, context) => field.value == null ? Fields.NULL : Fields.number(evaluate(field.value.toString())))
+    .add1("financial", "number", (field: LFR<'number'>, context) => field.value == null ? Fields.NULL : Fields.string(field.value.toFixed(2)))
+    .add1("weekly", "duration", (field: LFR<'duration'>, context) => field.value == null ? Fields.NULL : Fields.number(Math.ceil(field.value.as("week"))))
     .add1("length", "array", (field: LFR<'array'>, context) => Fields.number(field.value.length))
     .add1("length", "object", (field: LFR<'object'>, context) => Fields.number(field.value.size))
     .add1("length", "string", (field: LFR<'string'>, context) => Fields.number(field.value.length))
