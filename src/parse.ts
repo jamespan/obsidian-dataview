@@ -1,5 +1,5 @@
 import { DateTime, Duration } from 'luxon';
-import { BinaryOp, TagSource, FolderSource, Source, VariableField, Field, Fields, Sources, NegatedSource, WhereStep, SortByStep, LimitStep, QueryHeader, QueryOperation, FlattenStep, GroupStep, HavingStep } from 'src/query';
+import { BinaryOp, TagSource, CsvSource, FolderSource, Source, VariableField, Field, Fields, Sources, NegatedSource, WhereStep, SortByStep, LimitStep, QueryHeader, QueryOperation, FlattenStep, GroupStep, HavingStep } from 'src/query';
 import { QueryType, NamedField, QuerySortBy, Query } from "src/query";
 import * as P from 'parsimmon';
 
@@ -102,6 +102,7 @@ interface ExpressionLanguage {
 
     // Source-related parsers.
     tagSource: TagSource;
+    csvSource: CsvSource;
     folderSource: FolderSource;
     parensSource: Source;
     atomSource: Source;
@@ -225,13 +226,15 @@ export const EXPRESSION = P.createLanguage<ExpressionLanguage>({
 
     // Source parsing.
     tagSource: q => q.tag.map(tag => Sources.tag(tag)),
+    csvSource: q => P.seqMap(P.string("csv(").skip(P.optWhitespace), q.string, P.string(")"),
+        (_1,path, _2) => Sources.csv(path)),
     linkIncomingSource: q => q.link.map(link => Sources.link(link, true)),
     linkOutgoingSource: q => P.seqMap(P.string("outgoing(").skip(P.optWhitespace), q.link, P.string(")"),
         (_1, link, _2) => Sources.link(link, false)),
     folderSource: q => q.string.map(str => Sources.folder(str)),
     parensSource: q => P.seqMap(P.string("("), P.optWhitespace, q.source, P.optWhitespace, P.string(")"), (_1, _2, field, _3, _4) => field),
     negateSource: q => P.seqMap(P.alt(P.string("-"), P.string("!")), q.atomSource, (_, source) => Sources.negate(source)),
-    atomSource: q => P.alt<Source>(q.parensSource, q.negateSource, q.linkOutgoingSource, q.linkIncomingSource, q.folderSource, q.tagSource),
+    atomSource: q => P.alt<Source>(q.parensSource, q.negateSource, q.linkOutgoingSource, q.linkIncomingSource, q.folderSource, q.tagSource, q.csvSource),
     binaryOpSource: q => createBinaryParser(q.atomSource, q.binaryBooleanOp, Sources.binaryOp),
     source: q => q.binaryOpSource,
 

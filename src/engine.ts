@@ -24,6 +24,8 @@ export function collectFromSource(source: Source, index: FullIndex, origin: stri
         case "empty": return new Set<string>();
         case "tag": return index.tag.get(source.tag);
         case "folder": return index.prefix.get(source.folder);
+        case "csv":
+            return new Set<string>([source.path]);
         case "link":
             let fullPath = index.metadataCache.getFirstLinkpathDest(source.file, origin)?.path;
             if (!fullPath) return `Could not resolve link "${source.file}" during link lookup - does it exist?`;
@@ -152,6 +154,21 @@ export function defaultLinkHandler(index: FullIndex, origin: string): LinkHandle
     }
 }
 
+export function createCsvContext(file: string, index: FullIndex, rootContext: Context | undefined = undefined): Context[]  {
+    let results = [] as Context[];
+    let rows = index.csv.get(file);
+    for (let i = 0; i < rows.length; ++i) {
+        let context = new Context(defaultLinkHandler(index, file), rootContext, rows[i]);
+        let fileMeta = new Map<string, LiteralField>();
+        fileMeta.set("path", Fields.literal('string', file));
+        fileMeta.set("name", Fields.literal('string', getFileName(file)));
+        fileMeta.set("link", Fields.NULL);
+        context.set("file", Fields.object(fileMeta));
+        results.push(context);
+    }
+    return results;
+}
+
 /** Create a fully-filled context representing the given file. */
 export function createContext(file: string, index: FullIndex, rootContext: Context | undefined = undefined): Context {
     // Parse the frontmatter if present.
@@ -211,8 +228,12 @@ export function execute(query: Query, index: FullIndex, origin: string): QueryRe
     // Then, map all of the files to their corresponding contexts.
     let rows: Context[] = [];
     for (let file of fileset) {
-        let context = createContext(file, index, rootContext);
-        if (context) rows.push(context);
+        if (query.source.type === "csv") {
+            rows.push(...createCsvContext(file, index, rootContext))
+        } else {
+            let context =  createContext(file, index, rootContext);
+            if (context) rows.push(context);
+        }
     }
 
     for (let operation of query.operations) {

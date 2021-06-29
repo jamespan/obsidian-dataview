@@ -100,13 +100,20 @@ export interface QuerySortBy {
 }
 
 /** The source of files for a query. */
-export type Source = TagSource | FolderSource | LinkSource | EmptySource | NegatedSource | BinaryOpSource;
+export type Source = TagSource | CsvSource | FolderSource | LinkSource | EmptySource | NegatedSource | BinaryOpSource;
 
 /** A tag as a source of data. */
 export interface TagSource {
     type: 'tag';
     /** The tag to source from. */
     tag: string;
+}
+
+/** A tag as a source of data. */
+export interface CsvSource {
+    type: 'csv';
+    /** The tag to source from. */
+    path: string;
 }
 
 /** A folder prefix as a source of data. */
@@ -304,6 +311,10 @@ export namespace Fields {
 export namespace Sources {
     export function tag(tag: string): TagSource {
         return { type: 'tag', tag };
+    }
+
+    export function csv(path: string): CsvSource {
+        return { type: 'csv', path };
     }
 
     export function folder(prefix: string): FolderSource {

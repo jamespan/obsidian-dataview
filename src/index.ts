@@ -1,7 +1,10 @@
 /** Stores various indices on all files in the vault to make dataview generation fast. */
-import { MetadataCache, Vault, TFile } from 'obsidian';
-import { Task } from 'src/tasks';
+import {MetadataCache, Vault, TFile} from 'obsidian';
+import {Task} from 'src/tasks';
 import * as Tasks from 'src/tasks';
+import parseCsv from 'csv-parse/lib/sync';
+import {Fields, LiteralField, LiteralFieldRepr} from "src/query";
+import {EXPRESSION} from "src/parse";
 
 /** Aggregate index which has several sub-indices and will initialize all of them. */
 export class FullIndex {
@@ -12,10 +15,11 @@ export class FullIndex {
     static async generate(vault: Vault, cache: MetadataCache): Promise<FullIndex> {
         // TODO: Probably need to do this on a worker thread to actually get 
         let tags = TagIndex.generate(vault, cache);
+        let csv = CsvIndex.generate(vault, cache);
         let prefix = PrefixIndex.generate(vault);
 
-        return Promise.all([tags, prefix]).then(value => {
-            return new FullIndex(vault, cache, value[0], value[1]);
+        return Promise.all([tags, csv, prefix]).then(value => {
+            return new FullIndex(vault, cache, value[0], value[1], value[2]);
         });
     }
 
@@ -30,17 +34,19 @@ export class FullIndex {
 
     // The set of indices which we update.
     tag: TagIndex;
+    csv: CsvIndex;
     prefix: PrefixIndex;
 
     // Other useful things to hold onto.
     vault: Vault;
     metadataCache: MetadataCache;
 
-    constructor(vault: Vault, metadataCache: MetadataCache, tag: TagIndex, prefix: PrefixIndex) {
+    constructor(vault: Vault, metadataCache: MetadataCache, tag: TagIndex, csv: CsvIndex, prefix: PrefixIndex) {
         this.vault = vault;
         this.metadataCache = metadataCache;
 
         this.tag = tag;
+        this.csv = csv;
         this.prefix = prefix;
 
         this.reloadQueue = [];
@@ -77,6 +83,83 @@ export class FullIndex {
 
         for (let file of copy) {
             await Promise.all([this.tag.reloadFile(file)].concat(this.reloadHandlers.map(f => f(file))));
+        }
+    }
+}
+
+export class CsvIndex {
+
+    vault: Vault;
+    cache: MetadataCache;
+    rows: Map<String, Array<LiteralFieldRepr<'object'>>>
+
+    constructor(vault: Vault, metadataCache: MetadataCache,) {
+        this.vault = vault;
+        this.cache = metadataCache;
+        this.rows = new Map<String, Array<LiteralFieldRepr<'object'>>>();
+    }
+
+    public static async generate(vault: Vault, metadataCache: MetadataCache,): Promise<CsvIndex> {
+        let index = new CsvIndex(vault, metadataCache);
+        for (let file of vault.getFiles().filter((f) => f.extension == "csv")) {
+            let timeStart = new Date().getTime();
+            const content = await vault.adapter.read(file.path);
+            const parsed = parseCsv(content, {
+                columns: true,
+                skip_empty_lines: true,
+                trim: true,
+                cast: true,
+            }) as Array<Object>;
+            let rows = [] as Array<LiteralFieldRepr<'object'>>;
+            for (let i = 0; i < parsed.length; ++i) {
+                let result = new Map<string, LiteralField>();
+                for (const [key, value] of Object.entries(parsed[i])) {
+                    let strKey = key.toString();
+                    strKey = strKey.replace(" ", "_")
+                    if (value == null) {
+                        result.set(strKey, Fields.NULL);
+                    } else if (typeof value === 'number') {
+                        result.set(strKey, Fields.number(value));
+                    } else if (typeof value === 'string') {
+                        do {
+                            let dateParse = EXPRESSION.date.parse(value);
+                            if (dateParse.status) {
+                                result.set(strKey, Fields.literal('date', dateParse.value));
+                                break;
+                            }
+                            let durationParse = EXPRESSION.duration.parse(value);
+                            if (durationParse.status) {
+                                result.set(strKey, Fields.literal('duration', durationParse.value));
+                                break;
+                            }
+                            let linkParse = EXPRESSION.link.parse(value);
+                            if (linkParse.status) {
+                                result.set(strKey, Fields.literal('link', linkParse.value));
+                                break;
+                            }
+                            result.set(strKey, Fields.literal('string', value));
+                        } while (false)
+                    } else {
+                        result.set(strKey, Fields.object(value));
+                    }
+                }
+                rows.push(Fields.object(result));
+            }
+
+            let totalTimeMs = new Date().getTime() - timeStart;
+            console.log(`Dataview: Load ${parsed.length} rows in ${file.path} (${totalTimeMs / 1000.0}s)`);
+            index.rows.set(file.path, rows);
+        }
+
+        return index;
+    }
+
+    public get(path: string): Array<LiteralFieldRepr<'object'>> {
+        let result = this.rows.get(path);
+        if (result) {
+            return result;
+        } else {
+            return [] as Array<LiteralFieldRepr<'object'>>;
         }
     }
 }
