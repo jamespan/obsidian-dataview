@@ -81,8 +81,11 @@ export class FullIndex {
         this.reloadSet.clear();
         this.reloadQueue = [];
 
-        for (let file of copy) {
+        for (let file of copy.filter((f) => f.extension != "csv")) {
             await Promise.all([this.tag.reloadFile(file)].concat(this.reloadHandlers.map(f => f(file))));
+        }
+        for (let file of copy.filter((f) => f.extension == "csv")) {
+            await Promise.all([this.csv.reloadFile(file)]);
         }
     }
 }
@@ -102,56 +105,63 @@ export class CsvIndex {
     public static async generate(vault: Vault, metadataCache: MetadataCache,): Promise<CsvIndex> {
         let index = new CsvIndex(vault, metadataCache);
         for (let file of vault.getFiles().filter((f) => f.extension == "csv")) {
-            let timeStart = new Date().getTime();
-            const content = await vault.adapter.read(file.path);
-            const parsed = parseCsv(content, {
-                columns: true,
-                skip_empty_lines: true,
-                trim: true,
-                cast: true,
-            }) as Array<Object>;
-            let rows = [] as Array<LiteralFieldRepr<'object'>>;
-            for (let i = 0; i < parsed.length; ++i) {
-                let result = new Map<string, LiteralField>();
-                for (const [key, value] of Object.entries(parsed[i])) {
-                    let strKey = key.toString();
-                    strKey = strKey.replace(" ", "_")
-                    if (value == null) {
-                        result.set(strKey, Fields.NULL);
-                    } else if (typeof value === 'number') {
-                        result.set(strKey, Fields.number(value));
-                    } else if (typeof value === 'string') {
-                        do {
-                            let dateParse = EXPRESSION.date.parse(value);
-                            if (dateParse.status) {
-                                result.set(strKey, Fields.literal('date', dateParse.value));
-                                break;
-                            }
-                            let durationParse = EXPRESSION.duration.parse(value);
-                            if (durationParse.status) {
-                                result.set(strKey, Fields.literal('duration', durationParse.value));
-                                break;
-                            }
-                            let linkParse = EXPRESSION.link.parse(value);
-                            if (linkParse.status) {
-                                result.set(strKey, Fields.literal('link', linkParse.value));
-                                break;
-                            }
-                            result.set(strKey, Fields.literal('string', value));
-                        } while (false)
-                    } else {
-                        result.set(strKey, Fields.object(value));
-                    }
-                }
-                rows.push(Fields.object(result));
-            }
+            await index.reloadFile(file);
+        }
+        return index;
+    }
 
-            let totalTimeMs = new Date().getTime() - timeStart;
-            console.log(`Dataview: Load ${parsed.length} rows in ${file.path} (${totalTimeMs / 1000.0}s)`);
-            index.rows.set(file.path, rows);
+    async reloadFile(file: TFile) {
+        let timeStart = new Date().getTime();
+        const content = await this.vault.adapter.read(file.path);
+        const parsed = parseCsv(content, {
+            columns: true,
+            skip_empty_lines: true,
+            trim: true,
+            cast: true,
+        }) as Array<Object>;
+        let rows = [] as Array<LiteralFieldRepr<'object'>>;
+        for (let i = 0; i < parsed.length; ++i) {
+            let result = new Map<string, LiteralField>();
+            let col_idx = 0;
+            for (const [key, value] of Object.entries(parsed[i])) {
+                let strKey = key.toString() as string;
+                strKey = strKey.replace(/ /g, "_")
+                let field = Fields.NULL as LiteralFieldRepr<any>;
+                if (value == null) {
+                    field = Fields.NULL;
+                } else if (typeof value === 'number') {
+                    field = Fields.number(value);
+                } else if (typeof value === 'string') {
+                    do {
+                        let dateParse = EXPRESSION.date.parse(value);
+                        if (dateParse.status) {
+                            field = Fields.literal('date', dateParse.value);
+                            break;
+                        }
+                        let durationParse = EXPRESSION.duration.parse(value);
+                        if (durationParse.status) {
+                            field = Fields.literal('duration', durationParse.value);
+                            break;
+                        }
+                        let linkParse = EXPRESSION.link.parse(value);
+                        if (linkParse.status) {
+                            field = Fields.literal('link', linkParse.value);
+                            break;
+                        }
+                        field = Fields.literal('string', value);
+                    } while (false)
+                } else {
+                    field = Fields.object(value);
+                }
+                result.set(strKey, field);
+                result.set(`col__${col_idx++}`, field);
+            }
+            rows.push(Fields.object(result));
         }
 
-        return index;
+        let totalTimeMs = new Date().getTime() - timeStart;
+        console.log(`Dataview: Load ${parsed.length} rows in ${file.path} (${totalTimeMs / 1000.0}s)`);
+        this.rows.set(file.path, rows);
     }
 
     public get(path: string): Array<LiteralFieldRepr<'object'>> {
