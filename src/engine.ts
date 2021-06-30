@@ -24,8 +24,7 @@ export function collectFromSource(source: Source, index: FullIndex, origin: stri
         case "empty": return new Set<string>();
         case "tag": return index.tag.get(source.tag);
         case "folder": return index.prefix.get(source.folder);
-        case "csv":
-            return new Set<string>([source.path]);
+        case "csv": return new Set<string>(["csv://"+source.path]);
         case "link":
             let fullPath = index.metadataCache.getFirstLinkpathDest(source.file, origin)?.path;
             if (!fullPath) return `Could not resolve link "${source.file}" during link lookup - does it exist?`;
@@ -228,8 +227,8 @@ export function execute(query: Query, index: FullIndex, origin: string): QueryRe
     // Then, map all of the files to their corresponding contexts.
     let rows: Context[] = [];
     for (let file of fileset) {
-        if (query.source.type === "csv") {
-            rows.push(...createCsvContext(file, index, rootContext))
+        if (file.startsWith("csv://")) {
+            rows.push(...createCsvContext(file.substring("csv://".length), index, rootContext))
         } else {
             let context =  createContext(file, index, rootContext);
             if (context) rows.push(context);
