@@ -3,8 +3,8 @@ import {MetadataCache, Vault, TFile} from 'obsidian';
 import {Task} from 'src/tasks';
 import * as Tasks from 'src/tasks';
 import parseCsv from 'csv-parse/lib/sync';
-import {Fields, LiteralField, LiteralFieldRepr} from "src/query";
-import {EXPRESSION} from "src/parse";
+import {LiteralField, LiteralFieldRepr, LiteralTypeRepr} from "src/query";
+import {parseFrontmatter} from "src/engine";
 
 /** Aggregate index which has several sub-indices and will initialize all of them. */
 export class FullIndex {
@@ -121,42 +121,17 @@ export class CsvIndex {
         }) as Array<Object>;
         let rows = [] as Array<LiteralFieldRepr<'object'>>;
         for (let i = 0; i < parsed.length; ++i) {
-            let result = new Map<string, LiteralField>();
+            let row = parseFrontmatter(parsed[i]) as LiteralFieldRepr<'object'>;
             let col_idx = 0;
-            for (const [key, value] of Object.entries(parsed[i])) {
-                let strKey = key.toString() as string;
-                strKey = strKey.replace(/ /g, "_")
-                let field = Fields.NULL as LiteralFieldRepr<any>;
-                if (value == null) {
-                    field = Fields.NULL;
-                } else if (typeof value === 'number') {
-                    field = Fields.number(value);
-                } else if (typeof value === 'string') {
-                    do {
-                        let dateParse = EXPRESSION.date.parse(value);
-                        if (dateParse.status) {
-                            field = Fields.literal('date', dateParse.value);
-                            break;
-                        }
-                        let durationParse = EXPRESSION.duration.parse(value);
-                        if (durationParse.status) {
-                            field = Fields.literal('duration', durationParse.value);
-                            break;
-                        }
-                        let linkParse = EXPRESSION.link.parse(value);
-                        if (linkParse.status) {
-                            field = Fields.literal('link', linkParse.value);
-                            break;
-                        }
-                        field = Fields.literal('string', value);
-                    } while (false)
-                } else {
-                    field = Fields.object(value);
+            if (row.value != null) {
+                for (const [key, _] of Object.entries(parsed[i])) {
+                    let strKey = key.toString().replace(/ /g, "_");
+                    let map = (row.value as LiteralTypeRepr<'object'>)
+                    map.set(strKey, map.get(key) as LiteralField);
+                    map.set(`col__${col_idx++}`, map.get(key) as LiteralField);
                 }
-                result.set(strKey, field);
-                result.set(`col__${col_idx++}`, field);
             }
-            rows.push(Fields.object(result));
+            rows.push(row);
         }
 
         let totalTimeMs = new Date().getTime() - timeStart;
