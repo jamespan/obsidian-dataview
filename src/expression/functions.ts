@@ -6,6 +6,7 @@ import { LiteralReprAll, LiteralTypeOrAll } from "./binaryop";
 import type { Context } from "./context";
 import { Fields } from "./field";
 import { EXPRESSION } from "./parse";
+import {evaluate} from "mathjs"
 
 /**
  * A function implementation which takes in a function context and a variable number of arguments. Throws an error if an
@@ -168,6 +169,7 @@ export namespace DefaultFunctions {
     export const link: FunctionImpl = new FunctionBuilder("link")
         .add1("string", (a, c) => Link.file(c.linkHandler.normalize(a), false))
         .add1("link", a => a)
+        .add1("*", a => a == null ? null : Link.file(a.toString()))
         .add1("null", _a => null)
         .vectorize(1, [0])
         .add2("string", "string", (t, d, c) => Link.file(c.linkHandler.normalize(t), false, d))
@@ -479,6 +481,20 @@ export const DEFAULT_FUNCTIONS: Record<string, FunctionImpl> = {
     "all": DefaultFunctions.all,
     "any": DefaultFunctions.any,
     "none": DefaultFunctions.none,
+
+    "str": new FunctionBuilder("str")
+        .add1("*", s => s == null ? null : s.toString())
+        .build(),
+    "financial": new FunctionBuilder("financial")
+        .add1("number", n => n == null ? null : n.toFixed(2))
+        .add1("null", n => null)
+        .build(),
+    "weekly": new FunctionBuilder("weekly")
+        .add1("duration", d => d == null ? null : Math.ceil(d.as("week")))
+        .build(),
+    "eval": new FunctionBuilder("eval")
+        .add1("*", d => d == null ? null : evaluate(d.toString()))
+        .build(),
 
     // Object/Utility operations.
     "extract": DefaultFunctions.extract,

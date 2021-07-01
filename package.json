@@ -29,6 +29,7 @@
   "dependencies": {
     "csv-parse": "^4.16.0",
     "luxon": "^1.25.0",
+    "mathjs": "^9.4.3",
     "parsimmon": "^1.16.0"
   }
 }

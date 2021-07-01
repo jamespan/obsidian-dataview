@@ -96,7 +96,9 @@ export const DEFAULT_BINARY_OPS: BinaryOpHandler = BinaryOpHandler.create()
     .register('number', '+', 'number', (a, b) => a + b)
     .register('number', '-', 'number', (a, b) => a - b)
     .register('number', '*', 'number', (a, b) => a * b)
+    .registerComm('number', '*', 'null', (a, b) => null)
     .register('number', '/', 'number', (a, b) => a / b)
+    .registerComm('null', '/', 'number', (a, b) => null)
     // String implementations.
     .register('string', '+', '*', (a, b) => a + Values.toString(b))
     .register('*', '+', 'string', (a, b) => Values.toString(a) + b)
@@ -112,6 +114,10 @@ export const DEFAULT_BINARY_OPS: BinaryOpHandler = BinaryOpHandler.create()
     .register('duration', '-', 'duration', (a, b) => normalizeDuration(a.minus(b)))
     // Array operations.
     .register('array', '+', 'array', (a, b) => ([] as LiteralValue[]).concat(a).concat(b))
+    .register('array', '*', 'array', (a, b) => {
+        const zip = (a: any[], b: any[]) => a.map((k, i) => [k, b[i]]);
+        return zip(a, b).map(x => x[0] * x[1]);
+    })
     // Object operations.
     .register('object', '+', 'object', (a, b) => Object.assign({}, a, b))
     ;
