@@ -135,22 +135,22 @@ export function parseFrontmatter(value: any): LiteralField {
 
 /** The default link resolver used when creating contexts. */
 export function defaultLinkHandler(index: FullIndex, origin: string): LinkHandler {
-    return {
-        resolve: (link) => {
+    return Object.assign({
+        resolve: (link: string) => {
             let realFile = index.metadataCache.getFirstLinkpathDest(link, origin);
             if (!realFile) return Fields.NULL;
 
             return createContext(realFile.path, index).namespace;
         },
-        normalize: (link) => {
+        normalize: (link: string) => {
             let realFile = index.metadataCache.getFirstLinkpathDest(link, origin);
             return realFile?.path ?? link;
         },
-        exists: (link) => {
+        exists: (link: string) => {
             let realFile = index.metadataCache.getFirstLinkpathDest(link, origin);
             return !!realFile;
         }
-    }
+    }, {index: index}) as LinkHandler
 }
 
 export function createCsvContext(file: string, index: FullIndex, rootContext: Context | undefined = undefined): Context[]  {

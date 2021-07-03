@@ -13,7 +13,7 @@ export class FullIndex {
 
     /** Generate a full index from the given vault. */
     static async generate(vault: Vault, cache: MetadataCache): Promise<FullIndex> {
-        // TODO: Probably need to do this on a worker thread to actually get 
+        // TODO: Probably need to do this on a worker thread to actually get
         let tags = TagIndex.generate(vault, cache);
         let csv = CsvIndex.generate(vault, cache);
         let prefix = PrefixIndex.generate(vault);
@@ -95,11 +95,13 @@ export class CsvIndex {
     vault: Vault;
     cache: MetadataCache;
     rows: Map<String, Array<LiteralFieldRepr<'object'>>>
+    indexed: Map<String, Map<String, Map<any, LiteralFieldRepr<'object'>>>>
 
     constructor(vault: Vault, metadataCache: MetadataCache,) {
         this.vault = vault;
         this.cache = metadataCache;
         this.rows = new Map<String, Array<LiteralFieldRepr<'object'>>>();
+        this.indexed = new Map<String, Map<String, Map<any, LiteralFieldRepr<'object'>>>>();
     }
 
     public static async generate(vault: Vault, metadataCache: MetadataCache,): Promise<CsvIndex> {
@@ -137,6 +139,7 @@ export class CsvIndex {
         let totalTimeMs = new Date().getTime() - timeStart;
         console.log(`Dataview: Load ${parsed.length} rows in ${file.path} (${totalTimeMs / 1000.0}s)`);
         this.rows.set(file.path, rows);
+        this.indexed.delete(file.path);
     }
 
     public get(path: string): Array<LiteralFieldRepr<'object'>> {
@@ -146,6 +149,28 @@ export class CsvIndex {
         } else {
             return [] as Array<LiteralFieldRepr<'object'>>;
         }
+    }
+
+    public getMap(path: string, key: string): Map<any, LiteralFieldRepr<'object'>> {
+        let cached = this.indexed.get(path);
+        if (cached) {
+            let forKey = cached.get(key);
+            if (forKey) {
+                return forKey;
+            }
+        }
+        let forKey = new Map<any, LiteralFieldRepr<'object'>>();
+        let rows = this.get(path);
+        rows.forEach((row)=>{
+            forKey.set(row.value.get(key)?.value,  row)
+        })
+        if (!cached) {
+            cached = new Map<String, Map<any, LiteralFieldRepr<'object'>>>();
+            this.indexed.set(path, cached);
+        }
+        console.log(`Dataview: build index for ${path} with key ${key}`);
+        cached.set(key, forKey);
+        return forKey;
     }
 }
 
@@ -182,7 +207,7 @@ export class TagIndex {
         // Parse tags from YAML frontmatter.
         let frontCache = fileCache.frontmatter;
 
-        // Search for the 'tags' field, since it may have wierd 
+        // Search for the 'tags' field, since it may have wierd
         let tagsName: string | undefined = undefined;
         for (let key of Object.keys(frontCache ?? {})) {
             if (key.toLowerCase() == "tags" || key.toLowerCase() == "tag")
