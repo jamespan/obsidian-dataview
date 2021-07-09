@@ -338,6 +338,10 @@ export const BINARY_OPS = BinaryOpHandler.create()
         const zip = (a: any[], b: any[]) => a.map((k, i) => [k, b[i]]);
         return Fields.array(zip(a.value, b.value).map(x => Object.assign({}, x[0], {"value": x[0].value * x[1].value})))
     })
+    .add('/', 'array', 'array', (a, b) => {
+        const zip = (a: any[], b: any[]) => a.map((k, i) => [k, b[i]]);
+        return Fields.array(zip(a.value, b.value).map(x => Object.assign({}, x[0], {"value": x[0].value / x[1].value})))
+    })
     // Object operations.
     .add('+', 'object', 'object', (a, b) => {
         let result = new Map<string, LiteralField>();
