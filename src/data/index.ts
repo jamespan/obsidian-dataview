@@ -3,7 +3,6 @@ import {MetadataCache, Vault, TFile} from 'obsidian';
 import {fromTransferable, PageMetadata, ParsedMarkdown, parsePage, parseFrontmatter} from './file';
 import {getParentFolder} from 'src/util/normalize';
 import {LiteralValue} from "src/data/value";
-import {parseString} from '@fast-csv/parse';
 
 import DataviewImportWorker from 'web-worker:./importer.ts';
 
@@ -414,6 +413,7 @@ export class CsvIndex {
             let lineno = 0;
             function isNumeric(str:any) {
                 if (typeof str != "string") return false // we only process strings!
+                // @ts-ignore
                 return !isNaN(str) && // use type coercion to parse the _entirety_ of the string (`parseFloat` alone does not do this)...
                     !isNaN(parseFloat(str)) // ...and ensure strings of whitespace fail
             }
@@ -427,13 +427,22 @@ export class CsvIndex {
                     continue;
                 }
                 let parts = line.split(",");
-                let result: Record<string, LiteralValue> = {};
+                let parsed = {};
                 for (let i = 0; i < header.length; ++i) {
+                    let value = parts[i] as LiteralValue;
                     if (isNumeric(parts[i])) {
-                        result[header[i]] = Number(parts[i]);
-                    } else {
-                        result[header[i]] = parts[i];
+                        value = Number(parts[i]);
                     }
+                    // @ts-ignore
+                    parsed[header[i]] = value;
+                }
+                let fields = parseFrontmatter(parsed) as Record<string, LiteralValue>;
+                let result: Record<string, LiteralValue> = {};
+                let col_idx = 0;
+                for (let [key, value] of Object.entries(fields)) {
+                    let strKey = key.toString().replace(/ /g, "_");
+                    result[strKey] = value;
+                    result[`col__${col_idx++}`] = value;
                 }
                 rows.push(result);
             }
@@ -442,12 +451,6 @@ export class CsvIndex {
             // result['age'] = "11"
             // rows.push(result);
 
-            // parseString(content, {headers: true})
-            //     .on('data', row => console.log(row))
-
-            // for await (const record of parser) {
-            //     console.log(record);
-            // }
             // const parsed = parseCsv(content, {
             //     columns: true,
             //     skip_empty_lines: true,
