@@ -3,6 +3,7 @@ import {MetadataCache, Vault, TFile} from 'obsidian';
 import {fromTransferable, PageMetadata, ParsedMarkdown, parsePage, parseFrontmatter} from './file';
 import {getParentFolder} from 'src/util/normalize';
 import {LiteralValue} from "src/data/value";
+import * as Papa from "papaparse"
 
 import DataviewImportWorker from 'web-worker:./importer.ts';
 
@@ -399,81 +400,37 @@ export class CsvIndex {
     public static async generate(vault: Vault): Promise<CsvIndex> {
         let index = new CsvIndex(vault);
         for (let file of vault.getFiles().filter((f) => f.extension == "csv")) {
-            // let timeStart = new Date().getTime();
+            let timeStart = new Date().getTime();
             const content = await vault.adapter.read(file.path);
-            // const parser =csv.parse(content, {
-            //     columns: true,
-            //     skip_empty_lines: true,
-            //     trim: true,
-            //     cast: true,
-            // })
+
             let rows = [] as Record<string, LiteralValue>[];
-            console.log(content.length);
-            let header = [] as Array<string>;
-            let lineno = 0;
-            function isNumeric(str:any) {
-                if (typeof str != "string") return false // we only process strings!
-                // @ts-ignore
-                return !isNaN(str) && // use type coercion to parse the _entirety_ of the string (`parseFloat` alone does not do this)...
-                    !isNaN(parseFloat(str)) // ...and ensure strings of whitespace fail
-            }
-            for (let line of content.split("\n")) {
-                line = line.trim();
-                if (line.length == 0) {
-                    continue;
-                }
-                if (lineno++ == 0) {
-                    header = line.split(",");
-                    continue;
-                }
-                let parts = line.split(",");
-                let parsed = {};
-                for (let i = 0; i < header.length; ++i) {
-                    let value = parts[i] as LiteralValue;
-                    if (isNumeric(parts[i])) {
-                        value = Number(parts[i]);
+            let parsed = Papa.parse(content, {
+                header: true,
+                skipEmptyLines: true,
+                comments: true,
+                dynamicTyping: true,
+            });
+
+            if (parsed.errors.length > 0) {
+                console.log(parsed.errors[0])
+            } else {
+                for (let i = 0; i < parsed.data.length; ++i) {
+                    let result: Record<string, LiteralValue> = {};
+                    let fields = parseFrontmatter(parsed.data[i]) as Record<string, LiteralValue>;
+                    if (fields != null) {
+                        let col_idx = 0;
+                        for (let [key, value] of Object.entries(fields)) {
+                            let strKey = key.toString().replace(/ /g, "_");
+                            result[strKey] = value;
+                            result[`col__${col_idx++}`] = value;
+                        }
                     }
-                    // @ts-ignore
-                    parsed[header[i]] = value;
+                    rows.push(result);
                 }
-                let fields = parseFrontmatter(parsed) as Record<string, LiteralValue>;
-                let result: Record<string, LiteralValue> = {};
-                let col_idx = 0;
-                for (let [key, value] of Object.entries(fields)) {
-                    let strKey = key.toString().replace(/ /g, "_");
-                    result[strKey] = value;
-                    result[`col__${col_idx++}`] = value;
-                }
-                rows.push(result);
             }
-            // let result: Record<string, LiteralValue> = {};
-            // result['name'] = "Alice"
-            // result['age'] = "11"
-            // rows.push(result);
 
-            // const parsed = parseCsv(content, {
-            //     columns: true,
-            //     skip_empty_lines: true,
-            //     trim: true,
-            //     cast: true,
-            // }) as Array<Object>;
-            // let rows = [] as Record<string, LiteralValue>[];
-            // for (let i = 0; i < parsed.length; ++i) {
-            // let result: Record<string, LiteralValue> = {};
-            // let fields = parseFrontmatter(parsed[i]) as Record<string, LiteralValue>;
-            // if (fields != null) {
-            //     let col_idx = 0;
-            //     for (let [key, value] of Object.entries(fields)) {
-            //         let strKey = key.toString().replace(/ /g, "_");
-            //         result[strKey] = value;
-            //         result[`col__${col_idx++}`] = value;
-            //     }
-            // }
-            // rows.push(result);
-            // }
-
-            // let totalTimeMs = new Date().getTime() - timeStart;
-            // console.log(`Dataview: Load ${parsed.length} rows in ${file.path} (${totalTimeMs / 1000.0}s)`);
+            let totalTimeMs = new Date().getTime() - timeStart;
+            console.log(`Dataview: Load ${rows.length} rows in ${file.path} (${totalTimeMs / 1000.0}s)`);
             index.rows.set(file.path, rows);
         }
 
