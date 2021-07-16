@@ -1,9 +1,9 @@
 /** Stores various indices on all files in the vault to make dataview generation fast. */
-import { MetadataCache, Vault, TFile } from 'obsidian';
-import { fromTransferable, PageMetadata, ParsedMarkdown, parsePage, parseFrontmatter} from './file';
-import { getParentFolder } from 'src/util/normalize';
+import {MetadataCache, Vault, TFile} from 'obsidian';
+import {fromTransferable, PageMetadata, ParsedMarkdown, parsePage, parseFrontmatter} from './file';
+import {getParentFolder} from 'src/util/normalize';
 import {LiteralValue} from "src/data/value";
-import parseCsv from "csv-parse/lib/sync";
+import {parseString} from '@fast-csv/parse';
 
 import DataviewImportWorker from 'web-worker:./importer.ts';
 
@@ -110,7 +110,7 @@ export class BackgroundFileParser {
         this.pastPromises = new Map();
 
         for (let index = 0; index < numWorkers; index++) {
-            let worker = new DataviewImportWorker({ name: "Dataview Indexer" });
+            let worker = new DataviewImportWorker({name: "Dataview Indexer"});
             worker.onmessage = (evt) => {
                 let callbacks = this.pastPromises.get(evt.data.path);
                 let parsed = fromTransferable(evt.data.result);
@@ -137,7 +137,7 @@ export class BackgroundFileParser {
             for (let file of queueCopy) {
                 let workerId = this.nextWorkerId;
                 this.vault.read(file)
-                    .then(c => this.workers[workerId].postMessage({ path: file.path, contents: c }));
+                    .then(c => this.workers[workerId].postMessage({path: file.path, contents: c}));
 
                 this.nextWorkerId = (this.nextWorkerId + 1) % this.numWorkers;
             }
@@ -400,31 +400,77 @@ export class CsvIndex {
     public static async generate(vault: Vault): Promise<CsvIndex> {
         let index = new CsvIndex(vault);
         for (let file of vault.getFiles().filter((f) => f.extension == "csv")) {
-            let timeStart = new Date().getTime();
+            // let timeStart = new Date().getTime();
             const content = await vault.adapter.read(file.path);
-            const parsed = parseCsv(content, {
-                columns: true,
-                skip_empty_lines: true,
-                trim: true,
-                cast: true,
-            }) as Array<Object>;
+            // const parser =csv.parse(content, {
+            //     columns: true,
+            //     skip_empty_lines: true,
+            //     trim: true,
+            //     cast: true,
+            // })
             let rows = [] as Record<string, LiteralValue>[];
-            for (let i = 0; i < parsed.length; ++i) {
+            console.log(content.length);
+            let header = [] as Array<string>;
+            let lineno = 0;
+            function isNumeric(str:any) {
+                if (typeof str != "string") return false // we only process strings!
+                return !isNaN(str) && // use type coercion to parse the _entirety_ of the string (`parseFloat` alone does not do this)...
+                    !isNaN(parseFloat(str)) // ...and ensure strings of whitespace fail
+            }
+            for (let line of content.split("\n")) {
+                line = line.trim();
+                if (line.length == 0) {
+                    continue;
+                }
+                if (lineno++ == 0) {
+                    header = line.split(",");
+                    continue;
+                }
+                let parts = line.split(",");
                 let result: Record<string, LiteralValue> = {};
-                let fields = parseFrontmatter(parsed[i]) as Record<string, LiteralValue>;
-                if (fields != null) {
-                    let col_idx = 0;
-                    for (let [key, value] of Object.entries(fields)) {
-                        let strKey = key.toString().replace(/ /g, "_");
-                        result[strKey] = value;
-                        result[`col__${col_idx++}`] = value;
+                for (let i = 0; i < header.length; ++i) {
+                    if (isNumeric(parts[i])) {
+                        result[header[i]] = Number(parts[i]);
+                    } else {
+                        result[header[i]] = parts[i];
                     }
                 }
                 rows.push(result);
             }
+            // let result: Record<string, LiteralValue> = {};
+            // result['name'] = "Alice"
+            // result['age'] = "11"
+            // rows.push(result);
 
-            let totalTimeMs = new Date().getTime() - timeStart;
-            console.log(`Dataview: Load ${parsed.length} rows in ${file.path} (${totalTimeMs / 1000.0}s)`);
+            // parseString(content, {headers: true})
+            //     .on('data', row => console.log(row))
+
+            // for await (const record of parser) {
+            //     console.log(record);
+            // }
+            // const parsed = parseCsv(content, {
+            //     columns: true,
+            //     skip_empty_lines: true,
+            //     trim: true,
+            //     cast: true,
+            // }) as Array<Object>;
+            // let rows = [] as Record<string, LiteralValue>[];
+            // for (let i = 0; i < parsed.length; ++i) {
+            // let result: Record<string, LiteralValue> = {};
+            // let fields = parseFrontmatter(parsed[i]) as Record<string, LiteralValue>;
+            // if (fields != null) {
+            //     let col_idx = 0;
+            //     for (let [key, value] of Object.entries(fields)) {
+            //         let strKey = key.toString().replace(/ /g, "_");
+            //         result[strKey] = value;
+            //         result[`col__${col_idx++}`] = value;
+            //     }
+            // }
+            // rows.push(result);
+            // }
+
+            // let totalTimeMs = new Date().getTime() - timeStart;
+            // console.log(`Dataview: Load ${parsed.length} rows in ${file.path} (${totalTimeMs / 1000.0}s)`);
             index.rows.set(file.path, rows);
         }
 
