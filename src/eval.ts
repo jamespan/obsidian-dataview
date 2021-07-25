@@ -504,6 +504,9 @@ export const FUNCTIONS = new FunctionHandler()
         let match = rows.get(value.value);
         return match?? Fields.NULL;
     })
+    .add1("join", "array", (field: LFR<'array'>, context) => {
+        return Fields.string(field.value.map(x => x.value).join(", "));
+    })
     .add1("abs", "number", (field: LFR<'number'>, context) => Fields.number(Math.abs(field.value)))
     .add1("str", "*", (field: LFR<'*'>, context) => field.value == null ? Fields.NULL : Fields.string(field.value.toString()))
     .add1("eval", "*", (field: LFR<'*'>, context) => field.value == null ? Fields.NULL : Fields.number(evaluate(field.value.toString())))

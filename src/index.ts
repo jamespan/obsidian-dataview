@@ -2,7 +2,7 @@
 import {MetadataCache, Vault, TFile} from 'obsidian';
 import {Task} from 'src/tasks';
 import * as Tasks from 'src/tasks';
-import parseCsv from 'csv-parse/lib/sync';
+import * as Papa from "papaparse"
 import {LiteralField, LiteralFieldRepr, LiteralTypeRepr} from "src/query";
 import {parseFrontmatter} from "src/engine";
 
@@ -115,29 +115,33 @@ export class CsvIndex {
     async reloadFile(file: TFile) {
         let timeStart = new Date().getTime();
         const content = await this.vault.adapter.read(file.path);
-        const parsed = parseCsv(content, {
-            columns: true,
-            skip_empty_lines: true,
-            trim: true,
-            cast: true,
-        }) as Array<Object>;
+        const parsed = Papa.parse(content, {
+            header: true,
+            skipEmptyLines: true,
+            comments: true,
+            dynamicTyping: true,
+        });
         let rows = [] as Array<LiteralFieldRepr<'object'>>;
-        for (let i = 0; i < parsed.length; ++i) {
-            let row = parseFrontmatter(parsed[i]) as LiteralFieldRepr<'object'>;
-            let col_idx = 0;
-            if (row.value != null) {
-                for (const [key, _] of Object.entries(parsed[i])) {
-                    let strKey = key.toString().replace(/ /g, "_");
-                    let map = (row.value as LiteralTypeRepr<'object'>)
-                    map.set(strKey, map.get(key) as LiteralField);
-                    map.set(`col__${col_idx++}`, map.get(key) as LiteralField);
+        if (parsed.errors.length > 0) {
+            console.log(parsed.errors[0]);
+        } else {
+            for (let i = 0; i < parsed.data.length; ++i) {
+                let row = parseFrontmatter(parsed.data[i]) as LiteralFieldRepr<'object'>;
+                let col_idx = 0;
+                if (row.value != null) {
+                    for (const [key, _] of Object.entries(parsed.data[i])) {
+                        let strKey = key.toString().replace(/ /g, "_");
+                        let map = (row.value as LiteralTypeRepr<'object'>)
+                        map.set(strKey, map.get(key) as LiteralField);
+                        map.set(`col__${col_idx++}`, map.get(key) as LiteralField);
+                    }
                 }
+                rows.push(row);
             }
-            rows.push(row);
         }
 
         let totalTimeMs = new Date().getTime() - timeStart;
-        console.log(`Dataview: Load ${parsed.length} rows in ${file.path} (${totalTimeMs / 1000.0}s)`);
+        console.log(`Dataview: Load ${parsed.data.length} rows in ${file.path} (${totalTimeMs / 1000.0}s)`);
         this.rows.set(file.path, rows);
         this.indexed.delete(file.path);
     }
