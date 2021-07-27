@@ -505,7 +505,10 @@ export const FUNCTIONS = new FunctionHandler()
         return match?? Fields.NULL;
     })
     .add1("join", "array", (field: LFR<'array'>, context) => {
-        return Fields.string(field.value.map(x => x.value).join(", "));
+        return Fields.string(field.value.map(x => x.value).join(","));
+    })
+    .add2("join", "array", "string", (field: LFR<'array'>, sep: LFR<'string'>, context) => {
+        return Fields.string(field.value.map(x => x.value).join(sep.value));
     })
     .add1("abs", "number", (field: LFR<'number'>, context) => Fields.number(Math.abs(field.value)))
     .add1("str", "*", (field: LFR<'*'>, context) => field.value == null ? Fields.NULL : Fields.string(field.value.toString()))
@@ -529,7 +532,27 @@ export const FUNCTIONS = new FunctionHandler()
         return Fields.object(result);
     })
     .add1("link", "string", (field: LFR<'string'>, context) => Fields.link(field.value)) // TODO: Normalize link here.
+    .add1("link", "link", (field: LFR<'link'>, _context) => field)
     .add1("link", "null", (field, context) => Fields.NULL)
+    .add1("elink", "string", (field: LFR<'string'>, context) => {
+        let elem = document.createElement('a');
+        elem.textContent = field.value;
+        elem.rel = "noopener";
+        elem.target = "_blank";
+        elem.classList.add("external-link");
+        elem.href = field.value;
+        return Fields.html(elem);
+    })
+    .add2("elink", "string", "string", (url: LFR<'string'>, name: LFR<'string'>, context) => {
+        let elem = document.createElement('a');
+        elem.textContent = name.value;
+        elem.rel = "noopener";
+        elem.target = "_blank";
+        elem.classList.add("external-link");
+        elem.href = url.value;
+        return Fields.html(elem);
+    })
+  .vectorize("elink", [0])
     .add2("contains", "object", "string", (obj: LFR<"object">, key: LFR<"string">, context) => Fields.bool(obj.value.has(key.value)))
     .add2("contains", "link", "string", (link: LFR<"link">, key: LFR<'string'>, context) => {
         let linkValue = context.linkHandler.resolve(link.value);
